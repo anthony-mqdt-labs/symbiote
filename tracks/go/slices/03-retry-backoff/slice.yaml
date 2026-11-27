@@ -3,7 +3,7 @@ ring: 1
 goal: "Retry with capped exponential backoff that respects cancellation and wraps errors"
 target_files: [queue/retry.go, queue/retry_test.go]
 probe_cmd: "go test -race -run 'TestBackoff|TestRetry' ./queue/"
-static_checks: ["go vet ./...", "test -z \"$(gofmt -l .)\""]
+static_checks: ["go vet ./...", "test -z \"$(gofmt -l . | tee /dev/stderr)\""]
 hint: "Backoff: double a delay n times but stop doubling once it reaches max (no overflow). Retry: between attempts, select on time.After(delay) vs ctx.Done(); wrap with fmt.Errorf(\"%w: %w\", ctx.Err(), last)."
 lesson: |
   Go 1.20+ wraps two errors at once:

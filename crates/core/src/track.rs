@@ -64,7 +64,7 @@ pub fn load(dir: &Path) -> Result<Track, String> {
 }
 
 /// Static checks an LLM-authored (JIT) slice may use: exactly the ones the bundled tracks use.
-const JIT_STATIC_CHECKS: [&str; 5] = ["go vet ./...", "test -z \"$(gofmt -l .)\"", "cargo clippy --quiet --all-targets -- -D warnings", "cargo fmt --check", "tsc -p ."];
+const JIT_STATIC_CHECKS: [&str; 5] = ["go vet ./...", "test -z \"$(gofmt -l . | tee /dev/stderr)\"", "cargo clippy --quiet --all-targets -- -D warnings", "cargo fmt --check", "tsc -p ."];
 
 /// JIT slice commands come from model output and run via `sh -c`, so they must be a known
 /// test runner with plain arguments (no shell syntax). The test *code* still runs: the gate

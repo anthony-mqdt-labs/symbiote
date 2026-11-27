@@ -3,7 +3,7 @@ ring: 0
 goal: "Make Job.Validate reject empty and whitespace-only IDs"
 target_files: [queue/validate.go, queue/validate_test.go]
 probe_cmd: "go test -run TestValidate ./queue/"
-static_checks: ["go vet ./...", "test -z \"$(gofmt -l .)\""]
+static_checks: ["go vet ./...", "test -z \"$(gofmt -l . | tee /dev/stderr)\""]
 hint: "strings.TrimSpace(j.ID) == \"\" covers both cases; return the ErrMissingID sentinel so callers can errors.Is it."
 lesson: |
   A sentinel error is a package-level value callers compare against:

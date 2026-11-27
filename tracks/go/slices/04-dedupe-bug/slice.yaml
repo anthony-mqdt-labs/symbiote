@@ -3,7 +3,7 @@ ring: 2
 goal: "TestDeduper is red. Find the invariant Admit breaks and fix it in one line"
 target_files: [queue/dedupe.go, queue/dedupe_test.go]
 probe_cmd: "go test -race -run TestDeduper ./queue/"
-static_checks: ["go vet ./...", "test -z \"$(gofmt -l .)\""]
+static_checks: ["go vet ./...", "test -z \"$(gofmt -l . | tee /dev/stderr)\""]
 hint: "Compare the key used to read d.seen with the key used to write it."
 lesson: |
   Read & Defend: don't rewrite — trace.

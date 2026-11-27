@@ -3,7 +3,7 @@ ring: 1
 goal: "Wire ctx.Done() into the worker select loop for race-free shutdown"
 target_files: [queue/pool.go, queue/pool_test.go]
 probe_cmd: "go test -race -run TestPool ./queue/"
-static_checks: ["go vet ./...", "test -z \"$(gofmt -l .)\""]
+static_checks: ["go vet ./...", "test -z \"$(gofmt -l . | tee /dev/stderr)\""]
 hint: "Each worker loops on select { case <-ctx.Done(): return; case j, ok := <-jobs: ... }. A sync.WaitGroup makes RunPool wait for every worker; an atomic counter counts handled jobs."
 lesson: |
   for {

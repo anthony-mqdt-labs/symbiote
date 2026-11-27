@@ -129,6 +129,8 @@ pub struct Daemon {
     review_pause: bool,
     excerpt: Option<String>,
     mock_q: Option<String>,
+    /// The failing-checks output last sent for review; identical re-runs don't re-ask the LLM.
+    static_review_key: Option<String>,
     /// Stalled or cold-returned this slice: never ambush with an interview question.
     unprimed: bool,
     /// Latest Neovim LSP error count per root-relative path (Layer 2).
@@ -315,6 +317,7 @@ impl Daemon {
             review_pause: false,
             excerpt: None,
             mock_q: None,
+            static_review_key: None,
             unprimed: false,
             lsp: BTreeMap::new(),
             hint_on: false,
@@ -828,6 +831,7 @@ impl Daemon {
         self.anchor = None;
         self.notice = None;
         self.mock_q = None;
+        self.static_review_key = None;
         self.unprimed = false;
         self.dirty = false;
         self.stall_emitted = false;
@@ -938,7 +942,7 @@ impl Daemon {
                     .iter()
                     .map(|cmd| {
                         let r = verify::run_shell(cmd, &root, verify::PROBE_TIMEOUT);
-                        CheckStatus { cmd: cmd.clone(), status: if r.exit == 0 { "pass" } else { "fail" }.into(), output_head: if r.exit == 0 { String::new() } else { verify::failure_excerpt(&r.output) } }
+                        CheckStatus { cmd: cmd.clone(), status: if r.exit == 0 { "pass" } else { "fail" }.into(), output_head: check_output(cmd, r.exit, &r.output) }
                     })
                     .collect(),
             )
@@ -948,10 +952,12 @@ impl Daemon {
     fn on_static(&mut self, results: Vec<CheckStatus>) {
         let ok = results.iter().all(|c| c.status == "pass");
         self.stream(json!({"event": "static_checks", "pass": ok, "results": results.iter().map(|c| json!({"cmd": c.cmd, "status": c.status})).collect::<Vec<_>>()}));
+        let key = review_key(&results);
         self.st.static_status = results;
         if ok && self.st.probe_status == "green" && !self.st.slice_complete {
             self.complete_slice();
-        } else if !ok && self.tier1() {
+        } else if !ok && self.tier1() && self.static_review_key.as_ref() != Some(&key) {
+            self.static_review_key = Some(key);
             self.ask(LlmKind::Review, "The probe is green but static checks fail (see context). Run the Two-Axis Review with the failing check as the Standards finding.".into());
         }
         self.save();
@@ -1295,6 +1301,20 @@ pub fn write_jit_track(symbiote_dir: &Path, text: &str) -> Result<PathBuf, Strin
     Ok(dir)
 }
 
+/// What a check printed, or — for checks that fail silently — how to see why.
+fn check_output(cmd: &str, exit: i32, output: &str) -> String {
+    match (exit, output.trim().is_empty()) {
+        (0, _) => String::new(),
+        (_, true) => format!("failed with no output (exit {exit}) — run `{cmd}` in the terminal"),
+        _ => verify::failure_excerpt(output),
+    }
+}
+
+/// Identity of a static-check failure: which checks failed and what they printed.
+fn review_key(results: &[CheckStatus]) -> String {
+    results.iter().filter(|c| c.status == "fail").map(|c| format!("{}\n{}", c.cmd, c.output_head)).collect::<Vec<_>>().join("\n--\n")
+}
+
 fn append_jit_slice(dir: &Path, ring: u32, text: &str) -> Result<Slice, String> {
     let v = llm::extract_json(text).ok_or("reply contained no JSON object")?;
     let slice = write_jit_slice_files(dir, &v)?;
@@ -1343,4 +1363,27 @@ pub fn send_once(root: &Path, msg: &ClientMsg) -> io::Result<()> {
     let hello = serde_json::to_string(&ClientMsg::Hello { role: "hook".into() })?;
     let body = serde_json::to_string(msg)?;
     s.write_all(format!("{hello}\n{body}\n").as_bytes())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn check(status: &str, out: &str) -> CheckStatus {
+        CheckStatus { cmd: "gofmt".into(), status: status.into(), output_head: out.into() }
+    }
+
+    #[test]
+    fn silent_failures_still_explain_themselves() {
+        assert_eq!(check_output("go vet ./...", 0, "noise"), "");
+        assert!(check_output("test -z x", 1, "  \n").contains("run `test -z x`"));
+        assert!(check_output("go vet ./...", 1, "a.go:1: bad").contains("a.go:1: bad"));
+    }
+
+    #[test]
+    fn same_failure_same_review_key() {
+        let a = review_key(&[check("fail", "queue/validate.go"), check("pass", "")]);
+        assert_eq!(a, review_key(&[check("fail", "queue/validate.go"), check("pass", "")]), "re-run of the same failure → no new LLM review");
+        assert_ne!(a, review_key(&[check("fail", "queue/other.go")]), "a different failure is reviewed");
+    }
 }

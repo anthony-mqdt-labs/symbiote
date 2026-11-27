@@ -3,7 +3,7 @@ ring: 3
 goal: "Harden DecodeJob against oversized, unknown-field, trailing-data, and invalid input"
 target_files: [queue/decode.go, queue/decode_test.go]
 probe_cmd: "go test -race -run TestDecode ./queue/"
-static_checks: ["go vet ./...", "test -z \"$(gofmt -l .)\""]
+static_checks: ["go vet ./...", "test -z \"$(gofmt -l . | tee /dev/stderr)\""]
 hint: "Wrap r in &io.LimitedReader{R: r, N: MaxJobBytes + 1}; lr.N <= 0 afterwards means the input was too big. Call dec.DisallowUnknownFields(); after Decode, dec.Token() must return io.EOF. Finish with j.Validate()."
 lesson: |
   Untrusted input gets bounds before parsing:

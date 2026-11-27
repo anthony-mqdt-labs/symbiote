@@ -3,7 +3,7 @@ ring: 1
 goal: "Bounded queue: TryEnqueue never blocks and returns ErrFull at capacity"
 target_files: [queue/queue.go, queue/queue_test.go]
 probe_cmd: "go test -race -run TestEnqueue ./queue/"
-static_checks: ["go vet ./...", "test -z \"$(gofmt -l .)\""]
+static_checks: ["go vet ./...", "test -z \"$(gofmt -l . | tee /dev/stderr)\""]
 hint: "A select with a default case turns a channel send into a non-blocking attempt: send succeeds, or default returns ErrFull."
 lesson: |
   select {
