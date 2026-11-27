@@ -1145,9 +1145,10 @@ impl Daemon {
         let cfg = self.cfg.clone();
         let system = format!("{}\n\n## Live context (JSON)\n{}", llm::system_prompt(), self.context());
         let request_id = format!("{}-{}", crate::util::session_id(), now_ms());
+        let budget = if matches!(kind, LlmKind::JitTrack { .. } | LlmKind::JitNext { .. }) { llm::COMPILE } else { llm::CHAT };
         self.set_focus(if self.focus.is_empty() { "…".to_string() } else { self.focus.clone() }, true);
         self.spawn(move || {
-            let result = llm::chat(&cfg, &model, &request_id, &[("system", system), ("user", prompt)]).map(|o| o.text);
+            let result = llm::chat(&cfg, &model, &request_id, budget, &[("system", system), ("user", prompt)]).map(|o| o.text);
             Msg::Llm { epoch, kind, result }
         });
     }
