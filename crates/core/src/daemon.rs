@@ -40,7 +40,22 @@ pub fn sock_path(root: &Path) -> PathBuf {
     if p.as_os_str().len() < 100 {
         return p;
     }
-    std::env::temp_dir().join(format!("symbiote-{}.sock", err_hash(&root.to_string_lossy())))
+    // Inside a per-user dir: $TMPDIR is per-user on macOS, but may fall back to shared /tmp.
+    std::env::temp_dir().join(format!("symbiote-{}", unsafe { libc::getuid() })).join(format!("{}.sock", err_hash(&root.to_string_lossy())))
+}
+
+/// Creates the socket's parent if needed and refuses one another user could write into.
+fn ensure_private_parent(sock: &Path) -> io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+    let Some(dir) = sock.parent() else { return Ok(()) };
+    if !dir.exists() {
+        let _ = fs::DirBuilder::new().mode(0o700).create(dir);
+    }
+    let m = fs::symlink_metadata(dir)?;
+    if !m.is_dir() || m.uid() != unsafe { libc::getuid() } || m.mode() & 0o022 != 0 {
+        return Err(io::Error::new(io::ErrorKind::PermissionDenied, format!("{} is not a private directory owned by this user", dir.display())));
+    }
+    Ok(())
 }
 
 /// `--root`, else $SYMBIOTE_ROOT, else the nearest parent holding `.symbiote/`, else cwd.
@@ -140,6 +155,7 @@ pub fn run(root: PathBuf) -> io::Result<()> {
     let store = Store::open(&root)?;
     crate::shell::install(&store.dir)?;
     let sock = sock_path(&root);
+    ensure_private_parent(&sock)?;
     if UnixStream::connect(&sock).is_ok() {
         log("info", "daemon_already_running", json!({"sock": sock}));
         return Ok(());
@@ -1293,6 +1309,7 @@ fn write_jit_slice_files(dir: &Path, v: &Value) -> Result<Slice, String> {
         return Err("slice id must be kebab-case".into());
     }
     track::validate_slice(&slice)?;
+    track::jit_commands_ok(&slice)?;
     let sdir = dir.join("slices").join(&slice.id);
     write_files(&sdir.join("files"), &sv["files"])?;
     write_files(&sdir.join("solution"), &sv["solution"])?;
