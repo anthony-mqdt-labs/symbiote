@@ -1,0 +1,40 @@
+id: 05-import-harden
+ring: 3
+goal: "importLedger: survive hostile uploads — size limit, malformed JSON, per-row errors, prototype pollution"
+target_files: [src/import.ts, src/import.test.ts]
+probe_cmd: "bun test src/import.test.ts"
+static_checks: ["tsc -p ."]
+hint: "Measure bytes with new TextEncoder().encode(json).length before parsing. Wrap JSON.parse in try/catch. Require Array.isArray. For each row, reject Object.hasOwn(row, \"__proto__\") or \"constructor\", else run parseEvent and collect { index, error }."
+lesson: |
+  Order of defenses at a trust boundary:
+    1. size   — cheap, before any parsing work
+    2. syntax — JSON.parse throws; catch it, never let it escape
+    3. shape  — top level must be an array
+    4. rows   — validate each, keep going, report every bad index
+  JSON.parse('{"__proto__":{"x":1}}') creates an own key named __proto__;
+  merging that object elsewhere can poison Object.prototype.
+requires: [02-parse-dont-validate]
+trigger_words: ["prototype pollution", "defense in depth", "never throw at the boundary", "partial failure reporting"]
+say_this_not_that:
+  - avoid: "I wrapped it in a try/catch"
+    say: "importLedger is a total function at the trust boundary: it bounds size before parsing, catches malformed JSON, rejects prototype-polluting keys, and reports per-row errors instead of failing the whole upload"
+story_template: "A single malformed CSV-to-JSON upload crashed the import worker, and nothing stopped __proto__ keys from reaching our merge helpers. I made importLedger total — byte limit first, caught parse errors, per-row validation via parseEvent, and explicit prototype-pollution rejection — with a test per attack."
+concepts: [prototype-pollution, total-boundary]
+glossary:
+  - term: Prototype pollution
+    definition: "Injecting __proto__ / constructor keys so a later merge writes onto Object.prototype, affecting every object."
+    avoid: ["object injection"]
+  - term: Defense in depth
+    definition: "Layered checks (size, syntax, shape, rows) so one missed check doesn't expose everything."
+    avoid: ["extra validation"]
+tier0_drill:
+  prompt: "Remove the __proto__ check and run the probe. Then explain why parseEvent alone didn't catch it."
+  quiz:
+    question: "Why check the byte size before calling JSON.parse?"
+    options:
+      - "JSON.parse can't handle large strings"
+      - "Parsing is the expensive step; an attacker's 1 GB body should be rejected before it costs CPU and memory"
+      - "TextEncoder is required before JSON.parse"
+      - "Byte size determines the number of events"
+    answer_index: 1
+    explanation: "Cheap checks go first; the size bound protects the parser itself."

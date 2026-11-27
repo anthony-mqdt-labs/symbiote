@@ -1,0 +1,41 @@
+id: 02-borrowed-index
+ring: 1
+goal: "In-memory index whose reads borrow and whose writes move ownership"
+target_files: [src/index.rs, tests/index.rs]
+probe_cmd: "cargo test --test index"
+static_checks: ["cargo clippy --quiet --all-targets -- -D warnings", "cargo fmt --check"]
+hint: "HashMap::get returns Option<&Vec<u8>>; .map(Vec::as_slice) turns it into Option<&[u8]>. insert and remove already return the previous value — pass it straight through."
+lesson: |
+  Borrowing in the return type means "no copy, tied to self":
+    fn get(&self, key: &str) -> Option<&[u8]> {
+        self.map.get(key).map(Vec::as_slice)
+    }
+  HashMap<String, _> can be queried with &str because String: Borrow<str>.
+  insert returns the old value: ownership moves back to the caller.
+wire:
+  - file: src/lib.rs
+    line: "pub mod index;"
+trigger_words: ["borrowing", "ownership transfer", "zero-copy read", "Borrow trait"]
+say_this_not_that:
+  - avoid: "get returns the value"
+    say: "get returns a borrowed &[u8] tied to the index's lifetime, so reads are zero-copy and the borrow checker forbids mutation while it's held"
+story_template: "Every index read cloned the value, doubling allocation on the hot path. I changed get to return Option<&[u8]> so reads borrow instead of copy, and the compiler now guarantees no reader sees a value mutate underneath it."
+concepts: [borrowing, ownership-transfer]
+glossary:
+  - term: Borrow
+    definition: "A reference (&T or &mut T) that uses a value without owning it; the compiler enforces it can't outlive the owner."
+    avoid: ["pointer", "copy"]
+  - term: Ownership transfer
+    definition: "Moving a value so the receiver becomes responsible for dropping it — e.g. insert returning the old Vec."
+    avoid: ["passing by value"]
+tier0_drill:
+  prompt: "Try to call idx.insert(...) while holding the &[u8] from idx.get(...) in a variable. Read the borrow-checker error, then delete the attempt."
+  quiz:
+    question: "Why can't get(&self, key) -> Option<&[u8]> return a reference to a cloned Vec?"
+    options:
+      - "Clones are slower than borrows"
+      - "The clone is a local dropped at the end of get, so a reference to it would dangle — the compiler rejects it"
+      - "Vec cannot be cloned"
+      - "References can only point to stack memory"
+    answer_index: 1
+    explanation: "A returned reference must outlive the function; a local clone doesn't. The signature itself forces zero-copy reads."

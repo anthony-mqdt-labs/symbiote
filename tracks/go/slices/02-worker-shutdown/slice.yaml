@@ -1,0 +1,41 @@
+id: 02-worker-shutdown
+ring: 1
+goal: "Wire ctx.Done() into the worker select loop for race-free shutdown"
+target_files: [queue/pool.go, queue/pool_test.go]
+probe_cmd: "go test -race -run TestPool ./queue/"
+static_checks: ["go vet ./...", "test -z \"$(gofmt -l .)\""]
+hint: "Each worker loops on select { case <-ctx.Done(): return; case j, ok := <-jobs: ... }. A sync.WaitGroup makes RunPool wait for every worker; an atomic counter counts handled jobs."
+lesson: |
+  for {
+      select {
+      case <-ctx.Done():
+          return               // cancelled: stop taking work
+      case j, ok := <-jobs:
+          if !ok { return }    // closed and drained
+          handle(ctx, j)
+      }
+  }
+trigger_words: ["context cancellation", "goroutine leak", "graceful drain", "WaitGroup"]
+say_this_not_that:
+  - avoid: "kill the background thread"
+    say: "propagate ctx.Done() so workers finish in-flight jobs and exit, with a WaitGroup proving none leak"
+story_template: "In my Go job queue, I prevented goroutine leaks on shutdown by wiring ctx.Done() into the worker select loop. Verified with go test -race that RunPool returns only after every in-flight job finishes."
+concepts: [context-cancellation, select-statement]
+glossary:
+  - term: Context cancellation
+    definition: "Closing ctx.Done() to tell every goroutine holding that context to stop; it is cooperative, not preemptive."
+    avoid: ["killing the goroutine", "interrupting the thread"]
+  - term: Goroutine leak
+    definition: "A goroutine blocked forever (usually on a channel) after its work is no longer needed."
+    avoid: ["memory leak"]
+tier0_drill:
+  prompt: "Delete the ctx.Done() case and run the probe. Read the 1s timeout message, then restore it."
+  quiz:
+    question: "Why does a cancelled ctx unblock a worker sitting in select on an empty jobs channel?"
+    options:
+      - "The runtime kills goroutines whose context is cancelled"
+      - "Cancel closes ctx.Done(); a receive from a closed channel is always ready"
+      - "The mutex inside context unlocks the channel"
+      - "select polls ctx.Err() every few milliseconds"
+    answer_index: 1
+    explanation: "Receiving from a closed channel returns immediately, so the ctx.Done() case becomes ready the moment cancel runs."

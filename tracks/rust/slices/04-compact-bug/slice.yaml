@@ -1,0 +1,40 @@
+id: 04-compact-bug
+ring: 2
+goal: "tests/compact.rs is red. Find the invariant compact breaks and fix it in one line"
+target_files: [src/compact.rs, tests/compact.rs]
+probe_cmd: "cargo test --test compact"
+static_checks: ["cargo clippy --quiet --all-targets -- -D warnings", "cargo fmt --check"]
+hint: "Which occurrence of a key does entry(..).or_insert(i) keep — the first or the last?"
+lesson: |
+  Read & Defend: trace, don't rewrite.
+    entry(k).or_insert(v)  // keeps the EXISTING value if present
+    map.insert(k, v)       // overwrites: last write wins
+  Name the invariant compaction promises, then find the line that breaks it.
+requires: [01-record-codec]
+wire:
+  - file: src/lib.rs
+    line: "pub mod compact;"
+trigger_words: ["last-write-wins", "compaction", "tombstone", "invariant"]
+say_this_not_that:
+  - avoid: "compaction was keeping the wrong ones"
+    say: "compaction broke last-write-wins: or_insert kept each key's first offset; insert restores newest-wins, and tombstones still drop"
+story_template: "Compaction was resurrecting stale values because it kept each key's first occurrence. I traced it to entry().or_insert and switched to insert so last-write-wins holds, with a regression test covering overwrites and tombstones."
+concepts: [last-write-wins, tombstones]
+glossary:
+  - term: Last-write-wins
+    definition: "When a key appears many times in a log, the newest record is the truth."
+    avoid: ["latest value", "most recent"]
+  - term: Tombstone
+    definition: "A record marking a key as deleted (here: an empty value); compaction must drop the key, not keep older values."
+    avoid: ["null value", "soft delete"]
+tier0_drill:
+  prompt: "Before fixing, predict what compact([a=1, b=2, a=3]) returns with the bug. Then run the probe and check."
+  quiz:
+    question: "In compact, why was entry(key).or_insert(i) wrong?"
+    options:
+      - "It panics on duplicate keys"
+      - "or_insert keeps the first index seen, so older values survive — breaking last-write-wins"
+      - "It allocates a new map per record"
+      - "HashMap iteration order is random"
+    answer_index: 1
+    explanation: "or_insert only inserts when the key is absent; later (newer) indexes were ignored."

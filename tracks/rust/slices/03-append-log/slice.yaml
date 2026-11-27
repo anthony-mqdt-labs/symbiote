@@ -1,0 +1,42 @@
+id: 03-append-log
+ring: 1
+goal: "Append-only log generic over Write, and replay generic over Read"
+target_files: [src/log.rs, tests/log.rs]
+probe_cmd: "cargo test --test log"
+static_checks: ["cargo clippy --quiet --all-targets -- -D warnings", "cargo fmt --check"]
+hint: "append: remember self.offset, write_all(&rec.encode()), add the length, return the old offset. replay: read_to_end into a Vec, then loop Record::decode over the remaining slice; map Truncated to ErrorKind::UnexpectedEof and InvalidKey to ErrorKind::InvalidData."
+lesson: |
+  Generic over a trait = testable without the filesystem:
+    pub struct LogWriter<W: Write> { sink: W, offset: u64 }
+    let mut log = LogWriter::new(Vec::new());   // test
+    let mut log = LogWriter::new(File::create(p)?); // prod
+  Converting error types at a boundary:
+    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("{e:?}")))
+requires: [01-record-codec]
+wire:
+  - file: src/lib.rs
+    line: "pub mod log;"
+trigger_words: ["generic over Write", "dependency injection by trait", "append-only", "error conversion"]
+say_this_not_that:
+  - avoid: "I can pass in a vector for testing"
+    say: "the log is generic over io::Write, so production uses a File and tests use a Vec<u8> — same code path, no mocks"
+story_template: "The log was hard-wired to std::fs::File, so tests needed temp files and couldn't simulate torn writes. I made LogWriter generic over io::Write and replay generic over io::Read, testing against in-memory buffers including a truncated tail."
+concepts: [trait-generics, error-conversion]
+glossary:
+  - term: Generic over a trait
+    definition: "A type parameter bounded by a trait (W: Write) so one implementation works with any type providing it."
+    avoid: ["interface", "abstract class"]
+  - term: Append-only log
+    definition: "Storage that only adds to the end; existing bytes are never rewritten, which makes crash recovery simple."
+    avoid: ["journal file"]
+tier0_drill:
+  prompt: "Change replay to stop silently on a truncated tail and run the probe. Explain why silently dropping data is worse than an error."
+  quiz:
+    question: "Why does replay map DecodeError::Truncated to io::ErrorKind::UnexpectedEof?"
+    options:
+      - "io::Error can't represent custom errors"
+      - "It tells the caller the input ended mid-record — a torn write — using the standard io vocabulary"
+      - "UnexpectedEof is the only kind that formats nicely"
+      - "Truncated records are always caused by network errors"
+    answer_index: 1
+    explanation: "Translating at the io boundary lets callers handle 'ended mid-record' the same way std does."

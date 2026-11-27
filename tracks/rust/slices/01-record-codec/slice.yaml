@@ -1,0 +1,40 @@
+id: 01-record-codec
+ring: 1
+goal: "Panic-free record framing: encode and decode [key_len][val_len][key][value]"
+target_files: [src/record.rs, tests/record.rs]
+probe_cmd: "cargo test --test record"
+static_checks: ["cargo clippy --quiet --all-targets -- -D warnings", "cargo fmt --check"]
+hint: "Use buf.get(range) instead of buf[range]: it returns None instead of panicking. Compute the total length with checked_add so a huge header can't overflow."
+lesson: |
+  Slicing panics on bad bounds; .get() returns Option:
+    let hdr = buf.get(0..8).ok_or(DecodeError::Truncated)?;
+    let n = u32::from_le_bytes(hdr[0..4].try_into().unwrap()) as usize;
+  try_into() on a 4-byte slice can't fail here because hdr is exactly 8 bytes.
+  ? converts the Option→Result chain into an early return.
+wire:
+  - file: src/lib.rs
+    line: "pub mod record;"
+trigger_words: ["length-prefixed framing", "panic-free parsing", "checked arithmetic", "Result-based errors"]
+say_this_not_that:
+  - avoid: "I made it not crash on bad data"
+    say: "decode is total over its input: every malformed or truncated buffer maps to a DecodeError variant, using .get() and checked_add instead of indexing"
+story_template: "The record parser indexed slices directly, so a truncated file could panic the whole store. I rewrote decode to be total — .get() bounds checks and checked_add on declared lengths — with tests feeding truncated, oversized, and non-UTF-8 input."
+concepts: [panic-free-parsing, length-prefix-framing]
+glossary:
+  - term: Length-prefixed framing
+    definition: "Each record starts with fixed-size length fields, so a reader knows exactly how many bytes follow."
+    avoid: ["delimiter", "separator"]
+  - term: Total function
+    definition: "A function that returns a value for every possible input — here, Ok or a DecodeError, never a panic."
+    avoid: ["safe function"]
+tier0_drill:
+  prompt: "Swap one buf.get(..) for direct indexing and run the probe. Find the test that now panics."
+  quiz:
+    question: "A header declares key_len = u32::MAX on a 12-byte buffer. What should decode return?"
+    options:
+      - "It panics with index out of bounds"
+      - "Err(DecodeError::Truncated) — the buffer is shorter than the lengths promise"
+      - "It allocates 4 GiB and then fails"
+      - "Ok with an empty key"
+    answer_index: 1
+    explanation: "Declared lengths are untrusted. Comparing them against buf.len() before slicing turns this into Truncated."

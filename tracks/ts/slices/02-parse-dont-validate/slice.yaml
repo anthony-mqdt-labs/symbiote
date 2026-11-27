@@ -1,0 +1,39 @@
+id: 02-parse-dont-validate
+ring: 1
+goal: "parseEvent(unknown) → Result<LedgerEvent>: narrow untrusted input with type guards, no casts"
+target_files: [src/parse.ts, src/parse.test.ts]
+probe_cmd: "bun test src/parse.test.ts"
+static_checks: ["tsc -p .", "! grep -nE '\\bas (LedgerEvent|any)\\b|: any\\b' src/parse.ts"]
+hint: "Check typeof input === \"object\" && input !== null && !Array.isArray(input) first. Then `\"kind\" in input` narrows; read fields into locals and test each with typeof / Number.isSafeInteger. Build the event from the checked locals — no `as`."
+lesson: |
+  `unknown` forces you to prove the shape before use:
+    if (typeof input !== "object" || input === null) return err("not an object");
+    if (!("cents" in input)) return err("missing cents");
+    const cents = input.cents;               // cents: unknown
+    if (!Number.isSafeInteger(cents) ...)    // now narrowed to number
+  Returning a new object built from checked fields is "parse, don't validate".
+requires: [01-discriminated-union]
+trigger_words: ["parse, don't validate", "type guard", "unknown vs any", "Result type"]
+say_this_not_that:
+  - avoid: "I validate the JSON and then cast it"
+    say: "parseEvent takes unknown and narrows it with type guards into a LedgerEvent, returning a Result — there's no cast, so the type can't lie"
+story_template: "API handlers cast request bodies straight to our event type, so malformed input reached the ledger. I replaced the casts with parseEvent, which narrows unknown via type guards into a Result, and tests cover every field-level rejection."
+concepts: [parse-dont-validate, type-guards]
+glossary:
+  - term: Parse, don't validate
+    definition: "Turn unstructured input into a precise type once, at the boundary, instead of checking and then trusting a cast."
+    avoid: ["input sanitizing", "schema check"]
+  - term: unknown
+    definition: "The top type you must narrow before use; unlike any, it never silently type-checks."
+    avoid: ["any"]
+tier0_drill:
+  prompt: "Change the signature to (input: any) and add `return { ok: true, value: input }` at the top. tsc stays quiet — explain why that's the danger."
+  quiz:
+    question: "Why does parseEvent take `unknown` rather than `any`?"
+    options:
+      - "unknown is faster at runtime"
+      - "unknown must be narrowed before use, so the compiler forces every check; any would let unchecked access compile"
+      - "JSON.parse returns unknown"
+      - "any is deprecated in TypeScript 7"
+    answer_index: 1
+    explanation: "any disables checking; unknown keeps it on until you prove the shape."

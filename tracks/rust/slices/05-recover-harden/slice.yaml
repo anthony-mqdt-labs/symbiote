@@ -1,0 +1,41 @@
+id: 05-recover-harden
+ring: 3
+goal: "Crash recovery: keep every complete record, report the valid prefix, never trust a huge length"
+target_files: [src/recover.rs, tests/recover.rs]
+probe_cmd: "cargo test --test recover"
+static_checks: ["cargo clippy --quiet --all-targets -- -D warnings", "cargo fmt --check"]
+hint: "Loop over the buffer. Before decoding, read the header yourself: if key_len + val_len > MAX_RECORD, stop with corrupt = true. Truncated means a torn tail (stop, not corrupt); InvalidKey means corruption."
+lesson: |
+  Two kinds of bad tail, two different responses:
+    torn write   → the process died mid-append; truncate and carry on
+    corruption   → bytes that could never have been written; stop and flag
+  A declared length is a claim, not a fact: compare it to a hard cap
+  before it decides anything about memory.
+requires: [01-record-codec]
+wire:
+  - file: src/lib.rs
+    line: "pub mod recover;"
+trigger_words: ["torn write", "crash consistency", "valid prefix", "defensive limits"]
+say_this_not_that:
+  - avoid: "it skips the broken part at the end"
+    say: "recovery keeps the longest valid prefix: a torn final write is truncated, while an impossible length or bad key is flagged as corruption"
+story_template: "After a crash, the store refused to open because the last append was half-written. I added recovery that keeps the longest valid prefix, distinguishes torn writes from corruption, and caps declared lengths so a garbage header can't drive allocation."
+concepts: [crash-recovery, defensive-limits]
+glossary:
+  - term: Torn write
+    definition: "An append interrupted by a crash, leaving a partial record at the end of the log."
+    avoid: ["corrupted file", "bad data"]
+  - term: Valid prefix
+    definition: "The longest run of complete, well-formed records from the start; recovery truncates the file to it."
+    avoid: ["good part"]
+tier0_drill:
+  prompt: "Remove the MAX_RECORD check and run the probe. Explain which test fails and what a hostile file could do without it."
+  quiz:
+    question: "The log ends with a header claiming a 3 GiB value, but only 10 bytes follow. With MAX_RECORD = 1 MiB, what should recover report?"
+    options:
+      - "A torn write — just truncate"
+      - "Corruption — no valid record can declare more than MAX_RECORD, so the header itself is garbage"
+      - "Allocate 3 GiB and wait for more data"
+      - "Skip the header and keep reading"
+    answer_index: 1
+    explanation: "A torn write can't produce an impossible length; that header was never valid, so it's corruption."

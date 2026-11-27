@@ -1,0 +1,39 @@
+id: 01-bounded-enqueue
+ring: 1
+goal: "Bounded queue: TryEnqueue never blocks and returns ErrFull at capacity"
+target_files: [queue/queue.go, queue/queue_test.go]
+probe_cmd: "go test -race -run TestEnqueue ./queue/"
+static_checks: ["go vet ./...", "test -z \"$(gofmt -l .)\""]
+hint: "A select with a default case turns a channel send into a non-blocking attempt: send succeeds, or default returns ErrFull."
+lesson: |
+  select {
+  case ch <- v:      // room in the buffer: sent
+      return nil
+  default:           // buffer full: don't wait
+      return ErrFull
+  }
+  len(ch) is the number of buffered elements right now.
+trigger_words: ["backpressure", "bounded buffer", "non-blocking send", "load shedding"]
+say_this_not_that:
+  - avoid: "the queue just gets full sometimes"
+    say: "the queue applies backpressure: at capacity TryEnqueue fails fast with ErrFull so producers can shed or retry"
+story_template: "An unbounded queue would let a traffic spike exhaust memory. I bounded it with a buffered channel and a select-default send that returns ErrFull, verified under -race with concurrent producers."
+concepts: [backpressure, select-default]
+glossary:
+  - term: Backpressure
+    definition: "A bounded component signalling 'slow down' to its producers instead of growing without limit."
+    avoid: ["throttling", "rate limiting"]
+  - term: Non-blocking send
+    definition: "A channel send inside select with a default case; it either succeeds immediately or takes the default."
+    avoid: ["async send"]
+tier0_drill:
+  prompt: "Remove the default case and run the probe. Watch it hang/time out, then restore it."
+  quiz:
+    question: "TryEnqueue uses select { case q.jobs <- j: ... default: return ErrFull }. What happens when the buffer is full?"
+    options:
+      - "The send blocks until a worker receives"
+      - "default runs immediately and ErrFull is returned"
+      - "The runtime grows the buffer"
+      - "The oldest job is dropped to make room"
+    answer_index: 1
+    explanation: "select picks a ready case; when no case is ready and default exists, default runs without blocking."

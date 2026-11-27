@@ -1,0 +1,39 @@
+id: 05-decode-harden
+ring: 3
+goal: "Harden DecodeJob against oversized, unknown-field, trailing-data, and invalid input"
+target_files: [queue/decode.go, queue/decode_test.go]
+probe_cmd: "go test -race -run TestDecode ./queue/"
+static_checks: ["go vet ./...", "test -z \"$(gofmt -l .)\""]
+hint: "Wrap r in &io.LimitedReader{R: r, N: MaxJobBytes + 1}; lr.N <= 0 afterwards means the input was too big. Call dec.DisallowUnknownFields(); after Decode, dec.Token() must return io.EOF. Finish with j.Validate()."
+lesson: |
+  Untrusted input gets bounds before parsing:
+    lr := &io.LimitedReader{R: r, N: limit + 1} // +1 detects "over"
+    dec := json.NewDecoder(lr)
+    dec.DisallowUnknownFields()
+  The decoder stops at the end of the first value; anything after it
+  is still unread — dec.Token() returning io.EOF proves there is none.
+requires: [00-anchor]
+trigger_words: ["input validation at the trust boundary", "resource bounds", "fail closed", "strict decoding"]
+say_this_not_that:
+  - avoid: "I added some checks so bad JSON doesn't break it"
+    say: "DecodeJob is the trust boundary: it bounds reads to MaxJobBytes, rejects unknown fields and trailing data, and validates before anything downstream sees the job"
+story_template: "The job API decoded request bodies with no size limit, so one huge payload could exhaust memory. I bounded reads with an io.LimitedReader, enabled strict decoding, and proved with a counting reader that we never read more than MaxJobBytes+1 bytes."
+concepts: [trust-boundary, resource-bounds]
+glossary:
+  - term: Trust boundary
+    definition: "The point where data from outside your control enters; validate and bound it there, once."
+    avoid: ["sanitizing", "the edge"]
+  - term: Fail closed
+    definition: "On doubt, reject. An unknown field is an error, not something to silently ignore."
+    avoid: ["defensive coding"]
+tier0_drill:
+  prompt: "Drop the +1 from the limit and run TestDecodeTooLarge. Explain why exactly-at-the-limit and over-the-limit become indistinguishable."
+  quiz:
+    question: "Why does DecodeJob limit the reader to MaxJobBytes+1 instead of MaxJobBytes?"
+    options:
+      - "JSON needs one extra byte for the closing brace"
+      - "Reading one byte past the limit is how you tell 'over' apart from 'exactly at' the limit"
+      - "LimitedReader is off by one internally"
+      - "It leaves room for a trailing newline"
+    answer_index: 1
+    explanation: "With N = limit+1, consuming it all (N == 0) can only happen when the input exceeds the limit."

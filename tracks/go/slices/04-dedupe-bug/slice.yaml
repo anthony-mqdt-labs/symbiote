@@ -1,0 +1,37 @@
+id: 04-dedupe-bug
+ring: 2
+goal: "TestDeduper is red. Find the invariant Admit breaks and fix it in one line"
+target_files: [queue/dedupe.go, queue/dedupe_test.go]
+probe_cmd: "go test -race -run TestDeduper ./queue/"
+static_checks: ["go vet ./...", "test -z \"$(gofmt -l .)\""]
+hint: "Compare the key used to read d.seen with the key used to write it."
+lesson: |
+  Read & Defend: don't rewrite — trace.
+  1. Read the failing assertion: which call returned the wrong value?
+  2. Follow that value through Admit line by line.
+  3. Name the invariant ("reads and writes use the same normalized key").
+  4. Fix the one line that breaks it; leave everything else alone.
+trigger_words: ["invariant", "normalization", "idempotency", "root cause"]
+say_this_not_that:
+  - avoid: "I fixed the dedupe bug"
+    say: "the read path looked up the raw ID while the write path stored the normalized key; I made both use the same key, restoring the invariant"
+story_template: "Duplicate jobs were slipping past the deduper whenever IDs differed only in case. I traced it to the read path using the raw ID while writes used the lowercased key, and a regression test now pins that invariant."
+concepts: [invariants, idempotency]
+glossary:
+  - term: Invariant
+    definition: "A property that must hold every time a piece of code runs; bugs are places where one is broken."
+    avoid: ["rule", "assumption"]
+  - term: Idempotency
+    definition: "Doing an operation twice has the same effect as doing it once — what a deduper buys a job queue."
+    avoid: ["safe to retry"]
+tier0_drill:
+  prompt: "Explain the bug out loud in one sentence using the word 'invariant', then re-run the probe."
+  quiz:
+    question: "Admit lowercases the ID before storing it but looked up d.seen[j.ID]. Which input exposed the bug?"
+    options:
+      - "Admitting \"job-1\" twice"
+      - "Admitting \"Job-1\" twice"
+      - "Admitting an empty ID"
+      - "Admitting after the window expired"
+    answer_index: 1
+    explanation: "\"Job-1\" is stored as \"job-1\" but looked up as \"Job-1\", so the second Admit misses and returns true."

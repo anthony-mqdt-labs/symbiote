@@ -1,0 +1,24 @@
+track: go
+title: "Go · Durable Job Queue"
+capstone: durable-job-queue
+capstone_goal: "A job queue with bounded backpressure, race-free shutdown, retries, and hardened input."
+rings:
+  - ring: 0
+    slug: anchor
+    goal: "Verify the toolchain and make one red→green edit"
+    slices: [00-anchor]
+  - ring: 1
+    slug: tracer-bullets
+    goal: "Enqueue → worker pool → retry, end to end"
+    slices: [01-bounded-enqueue, 02-worker-shutdown, 03-retry-backoff]
+  - ring: 2
+    slug: read-defend
+    goal: "Read existing code, find the broken invariant, defend the fix"
+    slices: [04-dedupe-bug]
+  - ring: 3
+    slug: break-harden
+    goal: "Untrusted input, resource bounds, precise errors"
+    slices: [05-decode-harden]
+  - ring: 4
+    slug: architect
+    goal: "Pressure-test the design under /mock: durability, scaling, failure modes"

@@ -1,0 +1,39 @@
+id: 03-typed-emitter
+ring: 1
+goal: "A typed pub/sub bus: event names and payloads checked at compile time"
+target_files: [src/emitter.ts, src/emitter.test.ts]
+probe_cmd: "bun test src/emitter.test.ts"
+static_checks: ["tsc -p ."]
+hint: "Store listeners as a Map<keyof M, Set<(p: never) => void>> or a per-key object. on() adds and returns () => set.delete(fn). emit() iterates over a copy ([...set]) so unsubscribing mid-emit can't skip a listener."
+lesson: |
+  Generic key + indexed access ties name and payload together:
+    emit<K extends keyof M>(name: K, payload: M[K]): void
+  bus.emit("deposit", { cents: 5 })  // ok
+  bus.emit("deposit", { reason: "" }) // compile error
+  Iterating a live Set while callbacks mutate it is a classic bug;
+  iterate a snapshot: for (const fn of [...set]) fn(payload)
+requires: []
+trigger_words: ["generics", "keyof / indexed access types", "observer pattern", "unsubscribe handle"]
+say_this_not_that:
+  - avoid: "it's an event emitter with types"
+    say: "the bus is generic over an event map, so keyof M constrains names and M[K] fixes each payload — mismatches are compile errors, not runtime surprises"
+story_template: "Our string-keyed event bus let a typo'd event name or a wrong payload ship to production silently. I rebuilt it generic over an event map using keyof and indexed access types, and a typecheck file with @ts-expect-error locks the contract in CI."
+concepts: [generics-keyof, observer-pattern]
+glossary:
+  - term: Indexed access type
+    definition: "M[K] — the type of property K on M; with K extends keyof M it links a name to its payload."
+    avoid: ["lookup type"]
+  - term: Observer pattern
+    definition: "Subscribers register callbacks with a publisher and get an unsubscribe handle back."
+    avoid: ["callbacks", "hooks"]
+tier0_drill:
+  prompt: "In emit, iterate the live Set instead of a copy and run the probe. Read which test fails and why."
+  quiz:
+    question: "Why does emit iterate over [...listeners] instead of the Set itself?"
+    options:
+      - "Sets can't be iterated with for...of"
+      - "A listener that unsubscribes during emit mutates the Set mid-iteration, which can skip or repeat callbacks"
+      - "Spreading is faster than iterating"
+      - "TypeScript requires arrays in generic functions"
+    answer_index: 1
+    explanation: "Iterating a snapshot decouples this emit's delivery list from mutations made by the callbacks."

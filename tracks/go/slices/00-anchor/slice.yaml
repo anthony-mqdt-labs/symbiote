@@ -1,0 +1,33 @@
+id: 00-anchor
+ring: 0
+goal: "Make Job.Validate reject empty and whitespace-only IDs"
+target_files: [queue/validate.go, queue/validate_test.go]
+probe_cmd: "go test -run TestValidate ./queue/"
+static_checks: ["go vet ./...", "test -z \"$(gofmt -l .)\""]
+hint: "strings.TrimSpace(j.ID) == \"\" covers both cases; return the ErrMissingID sentinel so callers can errors.Is it."
+lesson: |
+  A sentinel error is a package-level value callers compare against:
+    var ErrMissingID = errors.New("job: missing id")
+    if errors.Is(err, ErrMissingID) { ... }
+  errors.Is still matches after the error is wrapped with %w.
+trigger_words: ["sentinel error", "errors.Is", "input validation"]
+say_this_not_that:
+  - avoid: "it checks if the string is bad"
+    say: "Validate returns the ErrMissingID sentinel, so callers branch with errors.Is instead of string matching"
+story_template: "Jobs with blank IDs could slip into the queue and collide downstream. I added a Validate method returning a sentinel error, verified with a table-driven test that errors.Is matches it."
+concepts: [sentinel-errors]
+glossary:
+  - term: Sentinel error
+    definition: "A package-level error value (var ErrX = errors.New(...)) that callers match with errors.Is."
+    avoid: ["error string", "error code"]
+tier0_drill:
+  prompt: "Wrap the error as fmt.Errorf(\"validate: %w\", ErrMissingID) and re-run the probe. It stays green — see why."
+  quiz:
+    question: "Validate now returns fmt.Errorf(\"validate: %w\", ErrMissingID). What does errors.Is(err, ErrMissingID) report?"
+    options:
+      - "true — %w keeps ErrMissingID in the chain errors.Is walks"
+      - "false — the wrapped error is a different value"
+      - "true, but only if the messages are identical"
+      - "it panics because err is not comparable"
+    answer_index: 0
+    explanation: "%w records the wrapped error; errors.Is unwraps the chain until it finds an equal value."

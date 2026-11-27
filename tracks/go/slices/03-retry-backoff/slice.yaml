@@ -1,0 +1,38 @@
+id: 03-retry-backoff
+ring: 1
+goal: "Retry with capped exponential backoff that respects cancellation and wraps errors"
+target_files: [queue/retry.go, queue/retry_test.go]
+probe_cmd: "go test -race -run 'TestBackoff|TestRetry' ./queue/"
+static_checks: ["go vet ./...", "test -z \"$(gofmt -l .)\""]
+hint: "Backoff: double a delay n times but stop doubling once it reaches max (no overflow). Retry: between attempts, select on time.After(delay) vs ctx.Done(); wrap with fmt.Errorf(\"%w: %w\", ctx.Err(), last)."
+lesson: |
+  Go 1.20+ wraps two errors at once:
+    err := fmt.Errorf("%w: %w", ctx.Err(), last)
+    errors.Is(err, context.Canceled) // true
+    errors.Is(err, last)             // true
+  Waiting that can be interrupted:
+    select { case <-time.After(d): case <-ctx.Done(): return ... }
+trigger_words: ["exponential backoff", "jitter", "error wrapping", "cancellable wait"]
+say_this_not_that:
+  - avoid: "it just tries again a few times"
+    say: "it retries with capped exponential backoff, aborts on ctx cancellation, and wraps the last cause so errors.Is still works"
+story_template: "Transient failures were retried in a tight loop that hammered the downstream. I added capped exponential backoff with a cancellable wait and %w wrapping, verified by tests asserting both the cancel path and errors.Is on the root cause."
+concepts: [exponential-backoff, error-wrapping]
+glossary:
+  - term: Exponential backoff
+    definition: "Waiting base·2ⁿ before retry n, capped at a maximum, so retries spread out instead of piling up."
+    avoid: ["retry delay", "sleep loop"]
+  - term: Error wrapping
+    definition: "Adding context to an error with %w while keeping the original reachable by errors.Is / errors.As."
+    avoid: ["error concatenation"]
+tier0_drill:
+  prompt: "Replace the select with time.Sleep(delay) and run TestRetryCancel. Read why it fails, then restore the select."
+  quiz:
+    question: "Why must the wait between retries select on ctx.Done() instead of calling time.Sleep?"
+    options:
+      - "time.Sleep is less precise than time.After"
+      - "time.Sleep ignores cancellation, so shutdown waits out the whole backoff"
+      - "time.Sleep cannot be used inside a goroutine"
+      - "select makes the retry loop lock-free"
+    answer_index: 1
+    explanation: "Sleep can't be interrupted; selecting on ctx.Done() lets cancellation end the wait immediately."

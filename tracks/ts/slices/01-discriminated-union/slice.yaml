@@ -1,0 +1,38 @@
+id: 01-discriminated-union
+ring: 1
+goal: "Model ledger events as a discriminated union and apply them with an exhaustive switch"
+target_files: [src/events.ts, src/events.test.ts]
+probe_cmd: "bun test src/events.test.ts"
+static_checks: ["tsc -p ."]
+hint: "switch (e.kind) with a case per variant; deposit adds, withdraw and fee subtract. In default, call assertNever(e): it type-checks only if every case was handled."
+lesson: |
+  The `kind` field narrows the union inside each case:
+    switch (e.kind) {
+      case "fee": return b - e.cents; // e.reason is available here
+      default:    return assertNever(e); // e: never if all cases handled
+    }
+  Add a variant later → tsc fails at every switch that forgot it.
+trigger_words: ["discriminated union", "exhaustiveness check", "narrowing", "never"]
+say_this_not_that:
+  - avoid: "I used a type field to tell them apart"
+    say: "events are a discriminated union on kind, and assertNever makes the switch exhaustive — adding a variant is a compile error everywhere it isn't handled"
+story_template: "Adding a new event type silently fell through to the default branch and corrupted balances. I modeled events as a discriminated union with an assertNever exhaustiveness check, so tsc now flags every unhandled variant at compile time."
+concepts: [discriminated-unions, exhaustiveness]
+glossary:
+  - term: Discriminated union
+    definition: "A union of object types sharing a literal field (kind) that TypeScript uses to narrow to one member."
+    avoid: ["tagged object", "enum"]
+  - term: Exhaustiveness check
+    definition: "A default branch that only type-checks when every union member was handled (via a never parameter)."
+    avoid: ["default case"]
+tier0_drill:
+  prompt: "Add { kind: \"refund\"; cents: number } to LedgerEvent and run tsc -p . — read where it fails. Then remove it."
+  quiz:
+    question: "Inside `case \"fee\":`, why can you read e.reason without a check?"
+    options:
+      - "TypeScript ignores missing properties in switch statements"
+      - "Comparing the literal kind narrows e to the fee member, which declares reason"
+      - "reason is optional on every event"
+      - "The switch casts e to any"
+    answer_index: 1
+    explanation: "Control-flow narrowing on the discriminant leaves only the variant whose kind is \"fee\"."

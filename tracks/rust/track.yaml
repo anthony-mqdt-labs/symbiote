@@ -1,0 +1,24 @@
+track: rust
+title: "Rust · kvlog (log-structured KV store)"
+capstone: kvlog
+capstone_goal: "A crash-safe, append-only key-value log: panic-free framing, borrowed reads, recovery from torn writes."
+rings:
+  - ring: 0
+    slug: anchor
+    goal: "Verify cargo and make one red→green edit"
+    slices: [00-anchor]
+  - ring: 1
+    slug: tracer-bullets
+    goal: "Record codec → in-memory index → append log, end to end"
+    slices: [01-record-codec, 02-borrowed-index, 03-append-log]
+  - ring: 2
+    slug: read-defend
+    goal: "Read existing code, find the broken invariant, defend the fix"
+    slices: [04-compact-bug]
+  - ring: 3
+    slug: break-harden
+    goal: "Corruption, torn writes, and untrusted lengths"
+    slices: [05-recover-harden]
+  - ring: 4
+    slug: architect
+    goal: "Pressure-test under /mock: fsync semantics, compaction strategy, concurrency"

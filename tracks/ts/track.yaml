@@ -1,0 +1,24 @@
+track: ts
+title: "TypeScript · Typed Event Ledger"
+capstone: event-ledger
+capstone_goal: "An event-sourced money ledger where the type system rejects invalid states and untrusted input is parsed, not trusted."
+rings:
+  - ring: 0
+    slug: anchor
+    goal: "Verify bun + tsc and make one red→green edit"
+    slices: [00-anchor]
+  - ring: 1
+    slug: tracer-bullets
+    goal: "Events → parser → typed bus, end to end"
+    slices: [01-discriminated-union, 02-parse-dont-validate, 03-typed-emitter]
+  - ring: 2
+    slug: read-defend
+    goal: "Read existing code, find the broken invariant, defend the fix"
+    slices: [04-replay-bug]
+  - ring: 3
+    slug: break-harden
+    goal: "Hostile uploads: size limits, malformed JSON, prototype pollution"
+    slices: [05-import-harden]
+  - ring: 4
+    slug: architect
+    goal: "Pressure-test under /mock: event versioning, idempotency, schema evolution"

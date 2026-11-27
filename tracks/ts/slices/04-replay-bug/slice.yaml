@@ -1,0 +1,38 @@
+id: 04-replay-bug
+ring: 2
+goal: "src/replay.test.ts is red. Find the invariant replay breaks and fix it in one line"
+target_files: [src/replay.ts, src/replay.test.ts]
+probe_cmd: "bun test src/replay.test.ts"
+static_checks: ["tsc -p ."]
+hint: "Run replay twice in a row in your head. Where does the second call's starting state come from?"
+lesson: |
+  Read & Defend: `const` freezes the binding, not the object.
+    const EMPTY = { n: 0 };
+    const s = EMPTY;  // s and EMPTY are the SAME object
+    s.n++;            // EMPTY.n is now 1 — for every future caller
+  Each call that mutates needs its own fresh state.
+requires: [01-discriminated-union]
+trigger_words: ["aliasing", "shared mutable state", "pure function", "referential transparency"]
+say_this_not_that:
+  - avoid: "replay had a caching bug"
+    say: "replay aliased a module-level object, so every call mutated shared state; giving each call a fresh accumulator made it a pure function again"
+story_template: "Balance reports grew on every request because replay mutated a shared module-level accumulator. I traced the aliasing and gave each call fresh state, with a regression test that runs replay twice and checks the results are independent."
+concepts: [aliasing, pure-functions]
+glossary:
+  - term: Aliasing
+    definition: "Two names referring to the same mutable object, so a change through one is visible through the other."
+    avoid: ["copy", "reference bug"]
+  - term: Pure function
+    definition: "Output depends only on inputs and nothing outside is mutated — the same call always returns the same result."
+    avoid: ["stateless"]
+tier0_drill:
+  prompt: "Say in one sentence why `const` didn't protect EMPTY, using the word 'binding'. Then re-run the probe."
+  quiz:
+    question: "replay starts with `const s = EMPTY` and mutates s. What does a second replay([]) return?"
+    options:
+      - "{ balance: 0, overdrafts: [] } — const prevents mutation"
+      - "The first call's final state — s aliases the shared EMPTY object"
+      - "A TypeError for assigning to a const"
+      - "undefined"
+    answer_index: 1
+    explanation: "const only stops reassigning the name; the object itself stays mutable and is shared across calls."

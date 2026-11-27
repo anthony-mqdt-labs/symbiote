@@ -1,0 +1,37 @@
+id: 00-anchor
+ring: 0
+goal: "Implement is_valid_key: non-empty, at most MAX_KEY_LEN bytes, no newline"
+target_files: [src/key.rs, tests/key.rs]
+probe_cmd: "cargo test --test key"
+static_checks: ["cargo clippy --quiet --all-targets -- -D warnings", "cargo fmt --check"]
+hint: "&str has .is_empty(), .len() (bytes, not chars) and .contains('\\n'). Chain them with &&."
+lesson: |
+  str::len() counts UTF-8 bytes, not characters:
+    assert_eq!("é".len(), 2);
+    assert_eq!("é".chars().count(), 1);
+  A boolean predicate reads best as one expression:
+    !s.is_empty() && s.len() <= LIMIT && !s.contains('\n')
+wire:
+  - file: src/lib.rs
+    line: "pub mod key;"
+trigger_words: ["UTF-8 byte length", "predicate", "boundary condition"]
+say_this_not_that:
+  - avoid: "it checks the key isn't too long"
+    say: "is_valid_key bounds keys by UTF-8 byte length, because the on-disk format stores bytes, not characters"
+story_template: "Keys had no length bound, so one oversized key could bloat every record header. I added is_valid_key bounding UTF-8 byte length, with tests pinning the exact boundary and a multibyte edge case."
+concepts: [utf8-byte-length]
+glossary:
+  - term: UTF-8 byte length
+    definition: "str::len() — the number of bytes, which differs from the character count for non-ASCII text."
+    avoid: ["string length", "character count"]
+tier0_drill:
+  prompt: "Change the check to key.chars().count() and run the probe. Read which test fails and why."
+  quiz:
+    question: "MAX_KEY_LEN is 256. Is a key of 200 'é' characters valid?"
+    options:
+      - "Yes — it is 200 characters"
+      - "No — it is 400 bytes, and the limit is in bytes"
+      - "Yes — Rust strings store one byte per char"
+      - "It depends on the platform"
+    answer_index: 1
+    explanation: "'é' is 2 bytes in UTF-8; str::len() returns 400, over the 256-byte limit."
