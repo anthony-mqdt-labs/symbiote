@@ -888,8 +888,13 @@ impl Daemon {
             self.excerpt = None;
             self.hint_on = false;
             self.st.last_green_probe_cmd = Some(r.cmd.clone());
-            if prev != "green" && !self.st.slice_complete {
-                self.st.persona = "supervisor".into();
+            // Every green re-checks until the slice completes: a check that failed on an
+            // unrelated file (e.g. an empty stray .go file) must be able to pass on a re-run.
+            let checks_running = self.st.static_status.iter().any(|c| c.status == "running");
+            if !self.st.slice_complete && !checks_running {
+                if prev != "green" {
+                    self.st.persona = "supervisor".into();
+                }
                 self.run_checks();
             }
         } else {

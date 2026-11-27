@@ -143,6 +143,12 @@ fn tier0_terminal_event_to_ui_objects() {
     // The learner fixes the code; the hook reports a run; the daemon re-probes and goes green.
     let sol = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tracks/ts/slices/00-anchor/solution/src/money.ts");
     std::fs::copy(sol, root.join("src/money.ts")).unwrap();
+    // A stray broken file fails static checks while the probe is green; removing it and
+    // re-running the (already green) probe must re-check and complete the slice.
+    std::fs::write(root.join("src/stray.ts"), "export const x: number = 'nope';\n").unwrap();
+    emit(&root, "bun test src/money.test.ts", 0);
+    ui.until(60, "checks fail on stray file", |v| tasks(v) && v["probe_status"] == "green" && v["static_checks"].as_array().unwrap().iter().any(|c| c["status"] == "fail"));
+    std::fs::remove_file(root.join("src/stray.ts")).unwrap();
     emit(&root, "bun test src/money.test.ts", 0);
     // complete_slice pushes the card, then the unlocked drill.
     let card = ui.until(30, "glossary card", |v| v["type"] == "upsert_glossary" && !v["story"].is_null());
