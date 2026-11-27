@@ -2,6 +2,7 @@
 //! Usage: symbiote-app [PROJECT_DIR]   (default: $SYMBIOTE_ROOT, then cwd)
 
 mod client;
+mod markdown;
 mod terminal;
 mod workspace;
 

@@ -210,23 +210,7 @@ impl WorkspaceView {
                 .into_any_element();
         }
         let focused = self.input_focus.is_focused(window);
-        let mut body = div().flex().flex_col().gap_1();
-        let mut in_code = false;
-        let mut code = String::new();
-        for line in self.focus_text.lines() {
-            if line.trim_start().starts_with("```") {
-                if in_code {
-                    body = body.child(mono_block(&code));
-                    code.clear();
-                }
-                in_code = !in_code;
-            } else if in_code {
-                code.push_str(line);
-                code.push('\n');
-            } else {
-                body = body.child(div().child(line.to_string()));
-            }
-        }
+        let mut body = crate::markdown::render(&self.focus_text, TEXT, DIM, mono_block);
         if self.focus_busy {
             body = body.child(div().text_color(rgb(DIM)).child("…"));
         }
